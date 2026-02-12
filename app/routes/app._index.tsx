@@ -1,7 +1,7 @@
 import { useState, useCallback } from "react";
 import type { LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
 import { useLoaderData, useSubmit, useNavigation } from "react-router";
-
+import { buildBaseline } from "../lib/baseline.server";
 import {
   Page,
   Layout,
@@ -105,7 +105,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
 // ── Action ────────────────────────────────────────────────────────────
 export async function action({ request }: ActionFunctionArgs) {
-  const { session } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
   const shop = session.shop;
 
   const form = await request.formData();
@@ -117,8 +117,9 @@ export async function action({ request }: ActionFunctionArgs) {
   }
 
   if (intent === "buildBaseline") {
-    // Stub for now — we’ll wire the real baseline builder next
-    return Response.json({ ok: true, message: "Baseline build not wired yet" });
+    const result = await buildBaseline({ admin, shop });
+    console.log(`[baseline] shop=${shop} upserts=${result.totalUpserts}`);
+    return Response.json({ ok: true, ...result });
   }
 
   return Response.json({ ok: false, error: "Unknown intent" }, { status: 400 });
@@ -162,14 +163,18 @@ export default function Dashboard() {
   const isSubmitting = navigation.state === "submitting";
 
   const handleBuildBaseline = useCallback(() => {
-    submit({ intent: "buildBaseline" }, { method: "post" });
-  }, [submit]);
+  const fd = new FormData();
+  fd.set("intent", "buildBaseline");
+  submit(fd, { method: "post" });
+}, [submit]);
 
-  const handleClearHistory = useCallback(() => {
-    if (confirm("Delete all logged price changes for this store? This cannot be undone.")) {
-      submit({ intent: "clearHistory" }, { method: "post" });
-    }
-  }, [submit]);
+const handleClearHistory = useCallback(() => {
+  if (confirm("Delete all logged price changes for this store? This cannot be undone.")) {
+    const fd = new FormData();
+    fd.set("intent", "clearHistory");
+    submit(fd, { method: "post" });
+  }
+}, [submit]);
 
   const handleSearch = useCallback(() => {
     const params = new URLSearchParams();

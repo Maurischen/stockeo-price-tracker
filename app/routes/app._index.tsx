@@ -1,7 +1,9 @@
+// app/routes/app._index.tsx
 import { useState, useCallback } from "react";
 import type { LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
-import { useLoaderData, useSubmit, useNavigation } from "react-router";
+import { useLoaderData, useSubmit, useNavigation, useFetcher } from "react-router";
 import { buildBaseline } from "../lib/baseline.server";
+
 import {
   Page,
   Layout,
@@ -26,6 +28,7 @@ import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
 
 const PAGE_SIZE = 25;
+
 type ChangeRow = {
   id: string;
   productTitle: string | null;
@@ -154,27 +157,36 @@ function fmtChangeBadgeText(c: any) {
 // ── Component ─────────────────────────────────────────────────────────
 export default function Dashboard() {
   const data = useLoaderData() as LoaderData;
+
+  // Keep useSubmit for GET navigation (search/pagination)
   const submit = useSubmit();
-  const navigation = useNavigation();
+
+  // Use fetcher for POST actions so you don't navigate to "200"
+  const fetcher = useFetcher();
 
   const [search, setSearch] = useState(data.search ?? "");
   const [direction, setDirection] = useState(data.direction ?? "");
 
-  const isSubmitting = navigation.state === "submitting";
+  const isSubmitting =
+    fetcher.state === "submitting" || fetcher.state === "loading";
 
   const handleBuildBaseline = useCallback(() => {
-  const fd = new FormData();
-  fd.set("intent", "buildBaseline");
-  submit(fd, { method: "post" });
-}, [submit]);
-
-const handleClearHistory = useCallback(() => {
-  if (confirm("Delete all logged price changes for this store? This cannot be undone.")) {
     const fd = new FormData();
-    fd.set("intent", "clearHistory");
-    submit(fd, { method: "post" });
-  }
-}, [submit]);
+    fd.set("intent", "buildBaseline");
+    fetcher.submit(fd, { method: "post" });
+  }, [fetcher]);
+
+  const handleClearHistory = useCallback(() => {
+    if (
+      confirm(
+        "Delete all logged price changes for this store? This cannot be undone.",
+      )
+    ) {
+      const fd = new FormData();
+      fd.set("intent", "clearHistory");
+      fetcher.submit(fd, { method: "post" });
+    }
+  }, [fetcher]);
 
   const handleSearch = useCallback(() => {
     const params = new URLSearchParams();
@@ -208,7 +220,13 @@ const handleClearHistory = useCallback(() => {
     </Text>,
     <Badge
       key={`${c.id}-dir`}
-      tone={c.direction === "up" ? "critical" : c.direction === "down" ? "success" : "attention"}
+      tone={
+        c.direction === "up"
+          ? "critical"
+          : c.direction === "down"
+            ? "success"
+            : "attention"
+      }
     >
       {fmtChangeBadgeText(c)}
     </Badge>,
@@ -222,7 +240,11 @@ const handleClearHistory = useCallback(() => {
       title="Price Change Tracker"
       subtitle="Logs product price changes (ideal for monitoring Stockeo updates)"
       primaryAction={
-        <Button variant="primary" loading={isSubmitting} onClick={handleBuildBaseline}>
+        <Button
+          variant="primary"
+          loading={isSubmitting}
+          onClick={handleBuildBaseline}
+        >
           Build baseline
         </Button>
       }
@@ -264,7 +286,7 @@ const handleClearHistory = useCallback(() => {
                     tone="critical"
                     variant="plain"
                     onClick={handleClearHistory}
-                    disabled={(data.stats.total ?? 0) === 0}
+                    disabled={(data.stats.total ?? 0) === 0 || isSubmitting}
                   >
                     Clear history
                   </Button>
